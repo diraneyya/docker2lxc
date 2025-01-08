@@ -1,5 +1,13 @@
 function docker2lxc {
   if ps -o comm= $PPID | grep -q sshd; then SSH=1; fi
+  if ! command -v docker; then
+    if [ -z "$SSH" ]; then
+      printf >&2 "\e[31mYou do not have Docker installed, aborting.\e[0m\n"
+    else
+      printf >&2 "\e[31mThe remote machine does not have Docker installed, aborting.\e[0m\n"
+    fi
+    return 1
+  fi
   if [ -z "$1" ]; then
     printf >&2 "\e[34;1mUsage:\e[22m %s \e[2;33;4m<image>\e[24m \e[4m<template.tar.gz>\e[0m\n" $0
     return 0
@@ -9,12 +17,12 @@ function docker2lxc {
   docker pull $1 >&2
   if [[ $? -ne 0 ]]; then 
     echo >&2 "\e[31m  Container '$1' not found, aborting\e[0m"
-    return 1
+    return 2
   fi
   docker_container=$(docker run --rm --entrypoint sh -id $1)
   if [[ $? -ne 0 ]]; then 
     echo >&2 "\e[31m  Incompatible container '$1' detected, aborting\e[0m"
-    return 2
+    return 3
   fi
   docker_container=${docker_container:0:12}
   if [ -z "$SSH" ]; then
