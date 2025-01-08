@@ -19,13 +19,22 @@
 
 ## Installation
 
-To install `docker2lxc`, append the contents of `entry.sh` to your shell's run-command file (e.g., `.bashrc`, `.zshrc`, etc.) or source the file directly when needed:
+To install `docker2lxc`, append the contents of `entry.sh` to your shell's run-command file (e.g., `.bashrc`, `.zshrc`, etc.):
 
+```bash
+cat entry.sh >> ~/.bashrc # for bash
+```
+
+```bash
+cat entry.sh >> ~/.zshrc # for zsh
+```
+
+... or source the file to import the function when needed:
 ```bash
 source entry.sh
 ```
 
-**Note:** Ensure that you are in the same directory as the cloned repository when executing the command above.
+**Note:** Ensure that you are in the same directory as the cloned repository when executing the commands above.
 
 ## Usage
 
