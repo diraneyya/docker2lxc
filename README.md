@@ -1,3 +1,29 @@
+# branch documentation
+
+## `noninteractive-export`
+
+In this branch, I use an extensive test suite to ensure that:
+
+```bash
+❯ ssh remote $(./prototype)
+non-interactively-invoked
+
+❯ ./prototype
+interactively-invoked
+```
+
+Namely, we have a prototype for a cli tool that offers the user maximum flexibility,
+allowing them either to invoke it locally or to export it and run it non-interactively
+on a remote machine using SSH.
+
+In the SSH case what happens under the hood is that the command substitution, which
+happens on the machine from which the SSH connection is initiated, results in exporting
+the definition of the cli tool, and sending a invocation call. This invocation call,
+happens on the SSH remote. So in fact, the cli is called twice, once to send the
+functionality to the remote, and once to run on the remote, while letting the tool
+know that it should operate non-interactively (i.e. it should not be asking for
+user input).
+
 # docker2lxc
 
 `docker2lxc` is a shell function that converts a Docker image into a tarball (`template.tar.gz`) that can be used as an LXC template. A more descriptive name for this tool could be `docker2rootfs`, as its primary function is to export the root filesystem of a Docker image.
