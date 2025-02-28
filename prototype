@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+function entrypoint() {
+    if [ -p "/dev/fd/1" ] || [ -f "/dev/fd/1" ]; then
+        echo "non-interactive"
+    else
+        echo "interactive"
+    fi
+}
+
+entrypoint $*
