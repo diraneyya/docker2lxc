@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+function entrypoint() {
+    if [ -p "/dev/fd/1" ] || [ -f "/dev/fd/1" ]; then
+        if [ "$INVOKE" != '1' ] && [ "${INVOKE@L}" != 'true' ]; then
+            # export the command and invoke the exported implementation
+            echo "$(declare -f entrypoint); INVOKE=1 entrypoint"
+            exit 0
+        fi
+        echo "non-interactively-invoked"
+    else
+        INTERACTIVE=1
+        echo "interactively-invoked"
+    fi
+}
+
+entrypoint $*
