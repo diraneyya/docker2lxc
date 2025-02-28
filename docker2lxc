@@ -1,43 +1,120 @@
 #!/usr/bin/env bash
 
-function docker2lxc() {
-  if ps -o comm= $PPID | grep -q sshd; then SSH=1; fi
-  if ! [ -p '/proc/$$/fd/1' ]; then INTERACTIVE=1; else
-    if [ $1 != '--internal-call']; then
-      echo "$(declare -f docker2lxc); docker2lxc --internal-call"
+# A function to select a suitable tag from the ones found locally
+function retrieve_tag() (
+    if [[ " $* " =~ 'latest' ]]; then
+        echo -n 'latest'
+        return 0
     fi
-  fi 
+
+    shopt -s extglob
+    local usable_tags=( ${@##@(unstable|preview|dev|night)*} )
+    
+    echo -n "${usable_tags[0]:-latest}"
+    test -n "${usable_tags[0]}"
+    return $?
+)
+
+function docker2lxc() {
+  local INTERACTIVE=
+  local EXPORT_INVOCATION=
+  local ACTUAL_INVOCATION=
+  local IMAGE_FOUND=
+  local QUALIFIER=
+  local SSH=
+  local info=
+  local answer=
+  local REQUEST_HELP=
+  local USAGE_SHOWN=
+  local DEADEND=
+  local docker_container=
+  local output_file=
+  
+
+  if [[ -p "/dev/fd/1" || -f "/dev/fd/1" ]]; then
+    if [ "$INVOKE" != '1' ] && [ "${INVOKE@L}" != 'true' ]; then
+      # export the command and invoke the exported implementation
+      # if you are confused about this, please check the POC I built
+      # and thoroughly tested in branch named `noninteractive-export`
+      EXPORT_INVOCATION="$(declare -f docker2lxc); INVOKE=1 docker2lxc"
+    else
+      ACTUAL_INVOCATION=1
+    fi
+  else
+    INTERACTIVE=1
+  fi
+
+  if ps -o comm= $PPID | grep -q sshd; then SSH=1; fi
 
   QUALIFIER=${SSH:+remote}
-  QUALIFIER=${TEMP:-local}
+  QUALIFIER=${QUALIFIER:-local}
 
-  if ! command -v dockerr &>/dev/null; then
+  if ! command -v docker &>/dev/null; then
     printf >&2 "\e[31m%s\e[0m\n" \
       "Docker not found on $QUALIFIER machine, aborting..."
     return 1
   fi
 
-  return 0
+  if [[ -n "$INTERACTIVE" && -n "$2" && -a "${2%.tar.gz}.tar.gz" ]]; then
+    printf "\e[31;1m%s '%s' %s \e[2m" "Archive" "$2" "already exists, what to do?" 
+    printf "\e[33m[\e[22;4m%c\e[24;2m%s/\e[33;22;4m%c\e[24;2m%s/\e[22;4m%c\e[24m%s\e[2m]\e[0m" \
+      'O' "verwrite" 'R' "ename" 'A' "bort"
+    read answer
+    echo
 
-  if [ -n "$1" ]; then 
-    if ! docker image inspect $1 >/dev/null 2>&1; then
-      if [ -n INTERACTIVE ]; then
-        printf >&2 "\e[33m%s %s\e[4m%s\e[24m%s [Y/n] \e[0m" \
-          "Docker image '$1' not found${SSH:+ on the remote}, do you want" \
-          "to try to pull it using '" "docker pull $1" "'?" 
+    case "$answer" in
+    [Oo]*)
+      output_file="${output_file%.tar.gz}.tar.gz"
+      ;;
+    [Rr]*)
+      output_file=${output_file%.tar.gz}
+      local -i counter=2
+      until [[ ! -a "${output_file}-$counter.tar.gz" ]]; do
+        ((counter++))
+      done
+      output_file="${output_file}-$counter.tar.gz"
+      ;;
+    esac
+  elif [[ -n "$2" ]]; then
+    output_file="${output_file%.tar.gz}.tar.gz"
+  fi
+
+  if [[ -n "$1" && ! "$1" =~ ^'-' && ! "$1" =~ ^'/' ]]; then 
+    # search for the image locally, the advantage of doing this in a
+    # separate step is being able to use interactive operation to ask
+    # for consent regarding pulling a new image. if launched in a way
+    # that is non-interactive, then we abort and ask the user to pull
+    # the image first.
+    info=( $(docker image ls --format \
+      "{{.Repository}}:{{.Tag}} {{.ID}}" "$1" | head -n 1) )
+
+    if [[ -n "${info[*]}" && ( "$1" = "${info[0]}" || "$1:latest" = "${info[0]}" ) ]]; then
+      IMAGE_FOUND=${info[1]}
+      if [[ -n "$INTERACTIVE" && -n "$output_file" ]]; then
+        printf "\e[33;2m%s\e[0m\n" "Image '${info[0]}' found locally..."
+      fi
+    else
+      # if we are running interactively, and there is no archive name provided
+      # then it would make sense to skip the docker pulling, knowing that an
+      # abort is lying ahead.
+      if [[ -n "$INTERACTIVE" && -n "$output_file" ]]; then
+        printf "\e[33m%s %s\e[4m%s\e[24m%s [Y/n] \e[0m" \
+          "'$1' was not exactly found${SSH:+ on this remote}, do you want" \
+          "to pull it using '" "docker pull $1" "'?" 
         read answer
         echo
 
         case "$answer" in
-          [Nn]*)
-            return 0
-            ;;
-          *)
-            if ! docker pull "$1"; then return 1; fi            
-            # Your code for "yes" goes here
-            ;;
+        [Nn]*)
+          return 0
+          ;;
+        *)
+          if docker pull --quiet "$1" &>/dev/null; then 
+            IMAGE_FOUND=$(docker image ls --format "{{.ID}}" "$1")
+          fi            
+          ;;
         esac
-      else
+      elif [[ -z "$INTERACTIVE" ]]; then
         printf >&2 "\e[31;1m%s \e[4m%s\e[24m %s.\e[0m\n" \
           "Docker image not found on ${QUALIFIER} machine. Use 'docker pull" \
           "$1" "' ${QUALIFIER}ly prior to calling ${0##*/}${SSH:+ on the remote}." 
@@ -46,24 +123,39 @@ function docker2lxc() {
     fi
   fi
 
-  return 0
-
-  if [ -z "$1" -z "$PIPED" && -z "$1" ]; then
-    printf >&2 "\e[34;2;1m%s:\e[22m %s \e[2;33;4m%s\e[24m \e[4m%s\e[0m\n" \
-      "Regular Usage" "docker2lxc" "<image>" "<template.tar.gz>"
-    return 0
+  if [[ "$1" =~ ^'-h' || "$1" = '--help' || "$1" = '/?' || "$1" =~ ^'/h' ]]; then
+    REQUEST_HELP=1
   fi
 
-  if [ -n "$PIPED" && -z "$1" ]; then
-    printf >&2 "\e[34;2;1m%s:\e[22m %s \e[2;33;4m%s\e[24m \e[4m%s\e[0m\n" \
-      "Regular Usage" "docker2lxc" "<image>" "<template.tar.gz>"
-    return 0
+  if [[ -z "$IMAGE_FOUND" || -z "$output_file" ]]; then DEADEND=1; fi
+
+  if [[ -n "$REQUEST_HELP" || ( -n "$DEADEND" && -n "$INTERACTIVE" ) ]]; then
+    printf >&2 "\e[34;7;1m %s %s❯\e[27m \e[2m%s\e[0m \e[33;4m%s\e[24m \e[4m%s\e[0m\n" \
+      "Usage" "${REQUEST_HELP:+    }" "docker2lxc" "image" "template.tar.gz"
+    USAGE_SHOWN=1
+  fi
+
+  if [[ -n "$REQUEST_HELP" || ( -n "$DEADEND" && -z "$INTERACTIVE" ) ]]; then
+    printf >&2 "\e[35;7;1m %s ❯\e[27m %s \e[2m\$(%s\e[0m \e[33;4m%s\e[0;35;2;1m) > \e[33;22;4m%s\e[0m\n" \
+      "SSH Usage" "ssh remote" "docker2lxc" "image" "template.tar.gz"
+    USAGE_SHOWN=1
+  fi
+
+  if [ -n "$USAGE_SHOWN" ]; then return 0; fi
+
+  if [ -n "$EXPORT_INVOCATION" ]; then
+    if [ -n "$IMAGE_FOUND" ]; then
+      echo >&1 "$EXPORT_INVOCATION"
+      return 0
+    else
+      return 1
+    fi
   fi
 
   # Extend to building Dockerfiles in the future using <image|Dockerfile>
   # if [ -f "$1" ]; then
   #   echo "found Dockerfile"
-  #   exit 1
+  #   return 1
   # fi
 
   echo >&2 -e "\e[33m-> Pulling Docker container '$1'...\e[0m"
@@ -72,27 +164,33 @@ function docker2lxc() {
     echo >&2 "\e[31m  Container '$1' not found, aborting\e[0m"
     return 2
   fi
-  docker_container=$(docker run --rm --entrypoint sh -id $1)
-  if [[ $? -ne 0 ]]; then 
-    echo >&2 "\e[31m  Incompatible container '$1' detected, aborting\e[0m"
-    return 3
-  fi
+  
+  # - create the container without running it (improved based on feedback from
+  #   @AugustD on the Proxmox Forums in thread docker-to-pve-lxc-conversion-steps-tool
+  # docker_container=$(docker run --rm --entrypoint sh -id $1)
+
+  docker_container=$(docker create $1)
+  # - deprecated but might still be desired
+  # if [[ $? -ne 0 ]]; then 
+  #   echo >&2 "\e[31m  Incompatible container '$1' detected, aborting\e[0m"
+  #   return 3
+  # fi
   docker_container=${docker_container:0:12}
   if [ -z "$SSH" ]; then
     output_file=${2:-template}
     output_file=${output_file%.tar.gz}.tar.gz
   fi
-  # test -z "$SSH" && \
+  
   echo >&2 -e "\e[33m-> Exporting root filesystem to '${output_file:-stdout}'...\e[0m"
   if [ -z "$output_file" ]; then
     docker export $docker_container | gzip >&1
   else 
     docker export $docker_container | gzip > $output_file
   fi
-  # test -z "$SSH" && \
+  
   echo >&2 -e "\e[33m-> Killing running container...\e[0m"
-  docker kill $docker_container >/dev/null
-  # test -z "$SSH" && \
+  docker rm $docker_container >/dev/null
+  
   echo >&2 -e "\e[32;1mDone\e[0m"
 }
 
