@@ -52,6 +52,7 @@ function docker2lxc() {
   QUALIFIER=${SSH:+remote}
   QUALIFIER=${QUALIFIER:-local}
 
+  # printf >&2 "DEBUG: SSH=%s\n" "$SSH"
   # printf "DEBUG: INVOKE=%s\n" "$INVOKE"
   # printf "DEBUG: EXPORT_INVOCATION=%s\n" "$EXPORT_INVOCATION"
   # printf "DEBUG: ACTUAL_INVOCATION=%s\n" "$ACTUAL_INVOCATION"
@@ -107,46 +108,58 @@ function docker2lxc() {
   # check if a sufficiently-specified image is given, this is needed
   # in all 3/3 cases regardless of usage scenario
   if [[ -n "$1" && ! "$1" =~ ^'-' && ! "$1" =~ ^'/' ]]; then 
-    # search for the image locally, the advantage of doing this in a
-    # separate step is being able to use interactive operation to ask
-    # for consent regarding pulling a new image. if launched in a way
-    # that is non-interactive, then we abort and ask the user to pull
-    # the image first.
-    info=( $(docker image ls --format \
-      "{{.Repository}}:{{.Tag}} {{.ID}}" "$1" | head -n 1) )
+    # even though the sufficiently-specified image is needed in all
+    # cases, it is only possible to verify its specifiedness using
+    # docker, hence, we restrict the folowing check to cases 1/3 and
+    # 3/3 which means the interactive case and the case when it is
+    # not an eval-code-spitting non-interactive call
+    if [[ -z "$DOCKER_NOT_AVAILABLE" && \
+      ( -n "$INTERACTIVE" || -z "$EXPORT_INVOCATION" ) ]]; then
+      # search for the image locally, the advantage of doing this in a
+      # separate step is being able to use interactive operation to ask
+      # for consent regarding pulling a new image. if launched in a way
+      # that is non-interactive, then we abort and ask the user to pull
+      # the image first.
+      info=( $(docker image ls --format \
+        "{{.Repository}}:{{.Tag}} {{.ID}}" "$1" | head -n 1) )
 
-    if [[ -n "${info[*]}" && ( "$1" = "${info[0]}" || "$1:latest" = "${info[0]}" ) ]]; then
-      IMAGE_FOUND=${info[1]}
-      if [[ -n "$INTERACTIVE" && -n "$output_file" ]]; then
-        printf "\e[33;2m%s\e[0m\n" "Image '${info[0]}' found locally..."
+      if [[ -n "${info[*]}" && ( "$1" = "${info[0]}" || "$1:latest" = "${info[0]}" ) ]]; then
+        IMAGE_FOUND=${info[1]}
+        if [[ -n "$INTERACTIVE" && -n "$output_file" ]]; then
+          printf "\e[33;2m%s\e[0m\n" "Image '${info[0]}' found locally..."
+        fi
+      else
+        # if we are running interactively, and there is no archive name provided
+        # then it would make sense to skip the docker pulling, knowing that an
+        # abort is lying ahead.
+        if [[ -n "$INTERACTIVE" && -n "$output_file" ]]; then
+          printf "\e[33m%s %s\e[4m%s\e[24m%s [Y/n] \e[0m" \
+            "'$1' was not exactly found${SSH:+ on this remote}, do you want" \
+            "to pull it using '" "docker pull $1" "'?" 
+          read answer
+          echo
+
+          case "$answer" in
+          [Nn]*)
+            return 0
+            ;;
+          *)
+            if docker pull --quiet "$1" &>/dev/null; then 
+              IMAGE_FOUND=$(docker image ls --format "{{.ID}}" "$1")
+            fi            
+            ;;
+          esac
+        elif [[ -z "$INTERACTIVE" ]]; then
+          printf >&2 "\e[31;1m%s \e[4m%s\e[24m %s.\e[0m\n" \
+            "Docker image not found on ${QUALIFIER} machine. Use 'docker pull" \
+            "$1" "' ${QUALIFIER}ly prior to calling ${0##*/}${SSH:+ on the remote}." 
+          return 1
+        fi
       fi
     else
-      # if we are running interactively, and there is no archive name provided
-      # then it would make sense to skip the docker pulling, knowing that an
-      # abort is lying ahead.
-      if [[ -n "$INTERACTIVE" && -n "$output_file" ]]; then
-        printf "\e[33m%s %s\e[4m%s\e[24m%s [Y/n] \e[0m" \
-          "'$1' was not exactly found${SSH:+ on this remote}, do you want" \
-          "to pull it using '" "docker pull $1" "'?" 
-        read answer
-        echo
-
-        case "$answer" in
-        [Nn]*)
-          return 0
-          ;;
-        *)
-          if docker pull --quiet "$1" &>/dev/null; then 
-            IMAGE_FOUND=$(docker image ls --format "{{.ID}}" "$1")
-          fi            
-          ;;
-        esac
-      elif [[ -z "$INTERACTIVE" ]]; then
-        printf >&2 "\e[31;1m%s \e[4m%s\e[24m %s.\e[0m\n" \
-          "Docker image not found on ${QUALIFIER} machine. Use 'docker pull" \
-          "$1" "' ${QUALIFIER}ly prior to calling ${0##*/}${SSH:+ on the remote}." 
-        return 1
-      fi
+      # this is the case 2/3 and we just accept $2 as $container_image without
+      # asking further questions
+      IMAGE_FOUND="$1"
     fi
   fi
 
@@ -176,7 +189,7 @@ function docker2lxc() {
     INCOMPLETE_2="1"; fi
 
   if [[ -n "$REQUEST_HELP" || -n "$INCOMPLETE_2" || -n "$INCOMPLETE_3" ]]; then
-    printf >&2 "\e[35;7;1m %s ❯\e[27m %s \e[2m\$(%s\e[0m \e[33;4m%s\e[24m:\e[4m%s\e[0;35;2;1m) > \e[33;22;4m%s\e[0m\n" \
+    printf >&2 "\e[35;7;1m %s ❯\e[27m %s \e[2m\"\$(%s\e[0m \e[33;4m%s\e[24m:\e[4m%s\e[0;35;2;1m)\" > \e[33;22;4m%s\e[0m\n" \
       "SSH Usage" "ssh remote" "docker2lxc" "image" "tag" "template.tar.gz"
     USAGE_SHOWN=1
   fi
