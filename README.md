@@ -1,71 +1,57 @@
 # docker2lxc
 
-`docker2lxc` is a shell function that converts a Docker image into a tarball (`template.tar.gz`) that can be used as an LXC template. A more descriptive name for this tool could be `docker2rootfs`, as its primary function is to export the root filesystem of a Docker image.
+`docker2lxc` is a shell script that allows you to export a Docker image as a root-filesystem tarball, which can be used as an LXC template in Proxmox.
 
-## Features
+> [WARNING]
+> This cli tool is in an early alpha stage. It is provided "as is" without warranty, and as a personal project that is in development to explore its usefulness to its creators and others in the open-source community.
 
-- Exports the root filesystem of a Docker image as a tarball.
-- Creates a base template for use in LXC containers.
+## Screenshot
 
-**Note:** This tool only handles the filesystem export. It does not configure the container. Users must manually handle the following tasks:
-
-- Configuring the entry point for the LXC container.
-- Adding necessary configuration files to the root filesystem.
-- Mounting additional volumes.
-- Setting up CPU, memory, and other resource limits.
-- Configuring networking.
-
----
+![](./.github/assets/screenshot.png)
 
 ## Installation
 
-To install `docker2lxc`, append the contents of `entry.sh` to your shell's run-command file (e.g., `.bashrc`, `.zshrc`, etc.):
-
 ```bash
-cat entry.sh >> ~/.bashrc # for bash
+mkdir -p ~/repos && cd ~/repos
+git clone https://github.com/diraneyya/docker2lxc.git
+sudo make install
 ```
 
-```bash
-cat entry.sh >> ~/.zshrc # for zsh
-```
-
-... or source the file to import the function when needed:
-```bash
-source entry.sh
-```
-
-**Note:** Ensure that you are in the same directory as the cloned repository when executing the commands above.
+If you do not have `sudo` or if you are logged in as root, just run `make install`.
 
 ## Usage
 
-### Running Locally
+Always invoke the tool from the machine on which you need the final LXC template to reside.
 
-To use the function locally, provide the name of the Docker image (as you would with `docker pull` or `docker run`) and optionally specify the tarball's filename. By default, the output tarball is named `template.tar.gz`:
+We have two usage scenarios, depending on whether the aforementioned machine has Docker installed or available.
 
+### Docker is available
+
+In this case, use:
 ```bash
-docker2lxc <image> [<output-filename.tar.gz>]
+docker2lxc $image:$tag $tarball
 ```
 
-Example:
-```bash
-
-docker2lxc ubuntu:20.04 my-template.tar.gz
+In the same way you would use:
+```
+docker pull $image:$tag
 ```
 
-### Running Over SSH
+### Docker is not available
 
-You can also run `docker2lxc` on a remote machine via SSH. This is useful when:
-
-- Docker is not installed on your local machine.
-- Your local machine lacks the necessary processing power or storage.
-- You need the template for a different platform or architecture than your local system.
-  
-To run the function over SSH:
+In this case, set up an SSH access to another machine which has Docker and enough storage space, then use:
 ```bash
-ssh <remote-host> "$(declare -f docker2lxc); docker2lxc <image>" > <output-filename.tar.gz>
+ssh $hostwithdocker $(docker2lxc $image:$tag) > $tarball
 ```
 
-Example:
-```bash
-ssh user@remote-server "$(declare -f docker2lxc); docker2lxc ubuntu:20.04" > ubuntu-template.tar.gz
-```
+> [!NOTE]
+> In this case, the `docker2lxc` command is transferred and invoked on the SSH remote (i.e. `$hostwithdocker`), with the tarball being saved on the machine you are working from (which, in turn, can also be a remote server that you are SSH'ing to, that is okay!).
+
+> [!TIP]
+> This usage scenario is also useful when the machine on which the LXC template needs to be stored does not have enough storage for the conversion of large Docker images.
+
+## Questions?
+
+If you are intrigued by this work, check out the experimental branches, which will help you understand my thought process.
+
+For any feedback, questions, or engagements, please email me at <info@orwa.tech>.
