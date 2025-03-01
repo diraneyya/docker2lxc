@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# is docker installed? then test using docker, otherwise
+# test on the local host. you can also pass '--local'
+if command -v docker &>/dev/null && [[ $1 =~ ^'-'{1,2}'l' ]]; then
+
 # Define an array of docker images for testing
 declare -a docker_images
 docker_images=( $(docker search --filter is-official=true --filter stars=3 --format="{{.Name}}" "operating systems") )
@@ -49,18 +53,33 @@ for (( i=0; i<array_length; i++ )); do
     docker_image_ids+=( $( docker image ls --format "{{.ID}}" "$image:$tag" ) )
 done
 
-rm test.log
-touch test.log
+# is docker not available?
+else
+LOCAL_TESTING=1
+array_length=1
+fi
 
 failed_tests=0
 
 for (( i=0; i<array_length; i++ )); do
-    printf "\e[34;1m%s\e[0m\n" "Testing under ${docker_images[i]}..."
+
+    if [ -n "$LOCAL_TESTING" ]; then 
+        target="the local system"
+    else
+        target="${docker_images[i]}"
+    fi 
+
+    printf "\e[34;1m%s\e[0m\n" "Testing under $target..."
     declare -a test_results
-    test_results=( $(docker run -it --rm -v .:/app --entrypoint \
-        "/app/unit_test.sh" ${docker_image_ids[i]} | tr "\r\n" "  ") )
+
+    if [ -n "$LOCAL_TESTING" ]; then 
+        test_results=( $(./unit_test.sh))
+    else
+        test_results=( $(docker run -it --rm -v .:/app --entrypoint \
+            "/app/unit_test.sh" ${docker_image_ids[i]} /app | tr "\r\n" "  ") )
+    fi
     printf "\e[0m"
-    test_results+=( $(tail -n 1 ./test.log) )
+
     test_matches=$(echo {'interactive ',}"non-interactive")
     
     if [[ " ${test_results[*]} " =~ $test_matches ]]; then
@@ -75,7 +94,7 @@ done
 
 if [[ $failed_tests -eq 0 ]]; then
     printf "\n\e[32;1m%s\e[0m\n" \
-        ">> ALL TESTS WERE PASSED SUCCESSFULLY <<"
+        ">> ALL ${LOCAL_TESTING:+LOCAL }TESTS WERE PASSED SUCCESSFULLY <<"
     exit 0
 fi
 

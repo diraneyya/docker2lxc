@@ -1,16 +1,20 @@
 #!/usr/bin/env sh
 
-if command -v bash &>/dev/null; then
+if command -v bash >/dev/null 2>&1; then
     :
 else
-    if command -v apk &>/dev/null; then
-        apk add bash &>/dev/null
-    elif command -v apt &>/dev/null; then
-        apt update &>/dev/null
-        apt install -y bash &>/dev/null
+    if command -v apk >/dev/null 2>&1; then
+        apk add bash >/dev/null 2>&1
+    elif command -v apt >/dev/null 2>&1; then
+        apt update >/dev/null 2>&1
+        apt install -y bash >/dev/null 2>&1
     fi
 fi
 
-/app/prototype
-/app/prototype | tee
-/app/prototype >> /app/test.log
+protopath=${1:-.}
+protopath=${protopath%/}
+
+$protopath/prototype
+$protopath/prototype | tee
+$protopath/prototype > $protopath/test.log && \
+    cat $protopath/test.log && rm $protopath/test.log
