@@ -130,14 +130,14 @@ function docker2lxc() {
   if [[ -z "$IMAGE_FOUND" || -z "$output_file" ]]; then DEADEND=1; fi
 
   if [[ -n "$REQUEST_HELP" || ( -n "$DEADEND" && -n "$INTERACTIVE" ) ]]; then
-    printf >&2 "\e[34;7;1m %s %s❯\e[27m \e[2m%s\e[0m \e[33;4m%s\e[24m \e[4m%s\e[0m\n" \
-      "Usage" "${REQUEST_HELP:+    }" "docker2lxc" "image" "template.tar.gz"
+    printf >&2 "\e[34;7;1m %s%s❯\e[27m \e[2m%s\e[0m \e[33;4m%s\e[24m:\e[4m%s\e[24m \e[4m%s\e[0m\n" \
+      "Usage" "${REQUEST_HELP:+     }" "docker2lxc" "image" "tag" "template.tar.gz"
     USAGE_SHOWN=1
   fi
 
   if [[ -n "$REQUEST_HELP" || ( -n "$DEADEND" && -z "$INTERACTIVE" ) ]]; then
-    printf >&2 "\e[35;7;1m %s ❯\e[27m %s \e[2m\$(%s\e[0m \e[33;4m%s\e[0;35;2;1m) > \e[33;22;4m%s\e[0m\n" \
-      "SSH Usage" "ssh remote" "docker2lxc" "image" "template.tar.gz"
+    printf >&2 "\e[35;7;1m %s ❯\e[27m %s \e[2m\$(%s\e[0m \e[33;4m%s\e[24m:\e[4m%s\e[0;35;2;1m) > \e[33;22;4m%s\e[0m\n" \
+      "SSH Usage" "ssh remote" "docker2lxc" "image" "tag" "template.tar.gz"
     USAGE_SHOWN=1
   fi
 
