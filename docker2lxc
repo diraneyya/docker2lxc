@@ -41,7 +41,14 @@ function docker2lxc() {
       # export the command and invoke the exported implementation
       # if you are confused about this, please check the POC I built
       # and thoroughly tested in branch named `noninteractive-export`
-      EXPORT_INVOCATION="$(declare -f docker2lxc); INVOKE=1 docker2lxc"
+      EXPORT_INVOCATION="$(declare -f docker2lxc); INVOKE=1 "
+      if [ "$DEBUG" = '1' ] || [ "${DEBUG@L}" = 'true' ]; then
+        EXPORT_INVOCATION+="DEBUG=1 "
+      fi
+      if [ "${DEBUG@L}" = 'dev' ]; then
+        EXPORT_INVOCATION+="DEBUG='DEV' "
+      fi
+      EXPORT_INVOCATION+="docker2lxc"
     fi
   else
     INTERACTIVE=1
@@ -201,6 +208,49 @@ function docker2lxc() {
     if [ -n "$REQUEST_HELP" ]; then
       return 0
     else
+      # printf "DEBUG=%s\n" "$DEBUG"
+      if [ "$DEBUG" = '1' ] || [ "${DEBUG@L}" = 'true' ] || [ "${DEBUG@L}" = 'dev' ]; then
+        if [ "${DEBUG@L}" = 'dev' ]; then
+          printf "DEBUG: HOST=%s\n" "$(hostname) (as $(whoami))"
+          printf "DEBUG: SSH=%s\n" "$SSH"
+          printf "DEBUG: INVOKE=%s\n" "$INVOKE"
+          printf "DEBUG: EXPORT_INVOCATION=%s\n" "${EXPORT_INVOCATION:0:32}..."
+          printf "DEBUG: DOCKER_NOT_AVAILABLE=%s\n" "$DOCKER_NOT_AVAILABLE"
+          printf "DEBUG: IMAGE_FOUND=%s\n" "$IMAGE_FOUND"
+          printf "DEBUG: ARCHIVE_FILE=%s\n" "$output_file"
+          printf "DEBUG: INCOMPLETE_1=%s\n" "$INCOMPLETE_1"
+          printf "DEBUG: INCOMPLETE_2=%s\n" "$INCOMPLETE_2"
+          printf "DEBUG: INCOMPLETE_3=%s\n" "$INCOMPLETE_3"
+        fi
+
+        if   [[ -n "$INCOMPLETE_1" ]]; then
+          # interactive operation, error messages must have been emitted
+          printf >&2 "\e[36;7;1m%s" \
+            "THE LOCAL CALL FAILED, "
+        elif [[ -n "$INCOMPLETE_2" ]]; then
+          # non-interactive operation, here more messages can help
+          printf >&2 "\e[36;7;2;1m%s" \
+            "THE LOCAL SSH CALL FAILED, "
+          if [[ -z "$IMAGE_FOUND" ]]; then
+            printf >&2 "%s"
+              "THE DOCKER IMAGE IS OMITTED"
+          fi
+          printf >&2 ".\e[0m\n"
+        elif [[ -n "$INCOMPLETE_3" ]]; then
+          # non-interactive operation, here more messages can help
+          printf >&2 "\e[36;7;2;1m%s" \
+            "THE REMOTE SSH EXECUTION FAILED, "
+          if   [[ -n "$DOCKER_NOT_AVAILABLE" ]]; then
+            printf >&2 "%s" \
+              "DOCKER WAS NOT FOUND"
+          elif [[ -z "$IMAGE_FOUND" ]]; then
+            printf >&2 "%s %s" "THE DOCKER IMAGE ISN'T CORRECT" \
+              "OR COULDN'T BE FETCHED"
+          fi
+          printf >&2 ".\e[0m\n"
+        fi
+      fi
+
       return 1
     fi
   fi
