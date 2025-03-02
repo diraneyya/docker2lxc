@@ -32,7 +32,9 @@ function docker2lxc() {
   local INCOMPLETE_2=
   local INCOMPLETE_3=
   
-
+  if [ "${DEBUG@L}" = 'dev' ]; then
+    set -x
+  fi
   # local -i p_test=$(test -p "/dev/fd/1"; echo $?)
   # local -i f_test=$(test -f "/dev/fd/1"; echo $?)
   
@@ -139,28 +141,31 @@ function docker2lxc() {
         # if we are running interactively, and there is no archive name provided
         # then it would make sense to skip the docker pulling, knowing that an
         # abort is lying ahead.
-        if [[ -n "$INTERACTIVE" && -n "$output_file" ]]; then
-          printf "\e[33m%s %s\e[4m%s\e[24m%s [Y/n] \e[0m" \
-            "'$1' was not exactly found${SSH:+ on this remote}, do you want" \
-            "to pull it using '" "docker pull $1" "'?" 
+        if [[ ( -n "$INTERACTIVE" && -n "$output_file" ) || -z "$INTERACTIVE" ]]; then
+          printf "\e[33m%s\e[4m%s\e[24m%s [Y/n] \e[0m" \
+            "Docker image not found ${QUALIFIER}ly, do we run '" "docker pull $1" "'?" 
           read answer
           echo
 
           case "$answer" in
           [Nn]*)
-            return 0
+            IMAGE_FOUND=
             ;;
           *)
             if docker pull --quiet "$1" &>/dev/null; then 
               IMAGE_FOUND=$(docker image ls --format "{{.ID}}" "$1")
-            fi            
+            fi
             ;;
           esac
         elif [[ -z "$INTERACTIVE" ]]; then
-          printf >&2 "\e[31;1m%s \e[4m%s\e[24m %s.\e[0m\n" \
-            "Docker image not found on ${QUALIFIER} machine. Use 'docker pull" \
-            "$1" "' ${QUALIFIER}ly prior to calling ${0##*/}${SSH:+ on the remote}." 
-          return 1
+          # Prior to including this condition in the execution branch above, I was
+          # basing my logic on the assumption that invoking a command on a remote
+          # using SSH should not be interactive, which also informed my choice of
+          # words when naming the shell variable $INTERACTIVE. However, it turns out
+          # that I am just finding ways to check if the call is somehow indirected
+          # or piped, but it can still be interactive.
+          # This execution branch is not needed for now.
+          :
         fi
       fi
     else
@@ -206,6 +211,7 @@ function docker2lxc() {
   # can just return, in which case we can differentiate between the two if we desire
   if [ -n "$USAGE_SHOWN" ]; then 
     if [ -n "$REQUEST_HELP" ]; then
+      set +x
       return 0
     else
       # printf "DEBUG=%s\n" "$DEBUG"
@@ -232,10 +238,15 @@ function docker2lxc() {
           printf >&2 "\e[36;7;2;1m%s" \
             "THE LOCAL SSH CALL FAILED, "
           if [[ -z "$IMAGE_FOUND" ]]; then
-            printf >&2 "%s"
+            printf >&2 "%s" \
               "THE DOCKER IMAGE IS OMITTED"
           fi
           printf >&2 ".\e[0m\n"
+          # in this particular case, we need to return an eval string to
+          # substitute the one in $EXPORT_INVOCATION, otherwise the user
+          # will end up SSHing into the machine using the SSH syntax.
+          # a colon ":" is an effective noop (no operation) in the shell.
+          echo >&1 ":"
         elif [[ -n "$INCOMPLETE_3" ]]; then
           # non-interactive operation, here more messages can help
           printf >&2 "\e[36;7;2;1m%s" \
@@ -244,13 +255,14 @@ function docker2lxc() {
             printf >&2 "%s" \
               "DOCKER WAS NOT FOUND"
           elif [[ -z "$IMAGE_FOUND" ]]; then
-            printf >&2 "%s %s" "THE DOCKER IMAGE ISN'T CORRECT" \
-              "OR COULDN'T BE FETCHED"
+            printf >&2 "%s" \
+              "THE DOCKER IMAGE ISN'T CORRECT OR WASN'T FETCHED"
           fi
           printf >&2 ".\e[0m\n"
         fi
       fi
 
+      set +x
       return 1
     fi
   fi
@@ -259,9 +271,13 @@ function docker2lxc() {
   # note that we can only do that if the call was complete
   if [ -n "$EXPORT_INVOCATION" ]; then
     if [ -z "$INCOMPLETE_2" ]; then
-      echo >&1 "$EXPORT_INVOCATION"
+      # very important not to forget to pass the image found as the argument to the
+      # second-stage calling of the cli tool (which happens on the remote)
+      echo >&1 "$EXPORT_INVOCATION $IMAGE_FOUND"
+      set +x
       return 0
     else
+      set +x
       return 1
     fi
   fi
@@ -275,10 +291,22 @@ function docker2lxc() {
   echo >&2 -e "\e[33m-> Pulling Docker container '$1'...\e[0m"
   docker pull $1 >&2
   if [[ $? -ne 0 ]]; then 
-    echo >&2 "\e[31m  Container '$1' not found, aborting\e[0m"
+    echo >&2 "\e[31m  Docker pull of image '$1' failed, aborting\e[0m"
+    set +x
     return 2
   fi
-  
+
+  image_id=$(docker image ls --format="{{.ID}}" "$1" | head -n 1)
+  image_id=$(echo "${image_id@L}" | grep --only-matching -E '^[0-9a-f]{10,}')
+  if [[ $? -ne 0 || -z "$image_id" ]]; then 
+    echo >&2 "\e[31m  Image's ID couldn't be determined, aborting\e[0m"
+    set +x
+    return 3
+  fi
+
+  # this is to implement a future clean protocol
+  docker tag $image_id $image_id:docker2lxc
+
   # - create the container without running it (improved based on feedback from
   #   @AugustD on the Proxmox Forums in thread docker-to-pve-lxc-conversion-steps-tool
   # docker_container=$(docker run --rm --entrypoint sh -id $1)
@@ -297,12 +325,30 @@ function docker2lxc() {
   
   echo >&2 -e "\e[33m-> Exporting root filesystem to '${output_file:-stdout}'...\e[0m"
   if [ -z "$output_file" ]; then
-    docker export $docker_container | gzip >&1
+    # here comes the real action, let us not fuck up the dude's terminal
+    printf >&2 "\e[33;4m%s \e[24;7m%s\e[27m? [y/N] \e[0m" \
+            "Did you forward the output to a file using" " >template.tar.gz " 
+    read answer
+    echo
+
+    case "$answer" in
+    [Yy]*)
+      # finally 
+      docker export $docker_container | gzip >&1
+      ;;
+    *)
+      printf >&2 "\e[32;1m%s\e[0m\n" \
+        "Glad not to mess up your terminal, then 😃. Fix that and call me again."
+      set +x
+      return 4
+      ;;
+    esac
+    
   else 
     docker export $docker_container | gzip > $output_file
   fi
   
-  echo >&2 -e "\e[33m-> Killing running container...\e[0m"
+  echo >&2 -e "\e[33m-> Cleaning up...\e[0m"
   docker rm $docker_container >/dev/null
   
   echo >&2 -e "\e[32;1mDone\e[0m"
