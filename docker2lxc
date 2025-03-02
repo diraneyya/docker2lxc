@@ -1,20 +1,5 @@
 #!/usr/bin/env bash
 
-# A function to select a suitable tag from the ones found locally
-function retrieve_tag() (
-    if [[ " $* " =~ 'latest' ]]; then
-        echo -n 'latest'
-        return 0
-    fi
-
-    shopt -s extglob
-    local usable_tags=( ${@##@(unstable|preview|dev|night)*} )
-    
-    echo -n "${usable_tags[0]:-latest}"
-    test -n "${usable_tags[0]}"
-    return $?
-)
-
 function docker2lxc() {
   local INTERACTIVE=
   local EXPORT_INVOCATION=
@@ -62,12 +47,12 @@ function docker2lxc() {
   QUALIFIER=${QUALIFIER:-local}
 
   # printf >&2 "DEBUG: SSH=%s\n" "$SSH"
-  # printf "DEBUG: INVOKE=%s\n" "$INVOKE"
-  # printf "DEBUG: EXPORT_INVOCATION=%s\n" "$EXPORT_INVOCATION"
-  # printf "DEBUG: ACTUAL_INVOCATION=%s\n" "$ACTUAL_INVOCATION"
-  # printf "DEBUG: INTERACTIVE=%s\n" "$INTERACTIVE"
-  # printf "DEBUG: -p /dev/fd/1=%s\n" "$(test -p "/dev/fd/1" && echo 1 || echo 0)"
-  # printf "DEBUG: -f /dev/fd/1=%s\n" "$(test -f "/dev/fd/1" && echo 1 || echo 0)"
+  # printf >&2 "DEBUG: INVOKE=%s\n" "$INVOKE"
+  # printf >&2 "DEBUG: EXPORT_INVOCATION=%s\n" "$EXPORT_INVOCATION"
+  # printf >&2 "DEBUG: ACTUAL_INVOCATION=%s\n" "$ACTUAL_INVOCATION"
+  # printf >&2 "DEBUG: INTERACTIVE=%s\n" "$INTERACTIVE"
+  # printf >&2 "DEBUG: -p /dev/fd/1=%s\n" "$(test -p "/dev/fd/1" && echo 1 || echo 0)"
+  # printf >&2 "DEBUG: -f /dev/fd/1=%s\n" "$(test -f "/dev/fd/1" && echo 1 || echo 0)"
 
   # check if docker is installed, needed in 2/3 cases
   if ! command -v docker &>/dev/null; then
@@ -88,11 +73,11 @@ function docker2lxc() {
   fi
 
   if [[ -n "$output_file" && -a "$output_file" ]]; then
-    printf "\e[31;1m%s '%s' %s \e[2m" "Archive" "$2" "already exists, what to do?" 
-    printf "\e[33m[\e[22;4m%c\e[24;2m%s/\e[33;22;4m%c\e[24;2m%s/\e[22;4m%c\e[24m%s\e[2m]\e[0m" \
+    printf >&2 "\e[31;1m%s '%s' %s \e[2m" "Archive" "$2" "already exists, what to do?" 
+    printf >&2 "\e[33m[\e[22;4m%c\e[24;2m%s/\e[33;22;4m%c\e[24;2m%s/\e[22;4m%c\e[24m%s\e[2m]\e[0m" \
       'O' "verwrite" 'R' "ename" 'A' "bort"
     read answer
-    echo
+    echo >&2
 
     case "$answer" in
     [Oo]*)
@@ -135,17 +120,17 @@ function docker2lxc() {
       if [[ -n "${info[*]}" && ( "$1" = "${info[0]}" || "$1:latest" = "${info[0]}" ) ]]; then
         IMAGE_FOUND=${info[1]}
         if [[ -n "$INTERACTIVE" && -n "$output_file" ]]; then
-          printf "\e[33;2m%s\e[0m\n" "Image '${info[0]}' found locally..."
+          printf >&2 "\e[33;2m%s\e[0m\n" "Image '${info[0]}' found locally..."
         fi
       else
         # if we are running interactively, and there is no archive name provided
         # then it would make sense to skip the docker pulling, knowing that an
         # abort is lying ahead.
         if [[ ( -n "$INTERACTIVE" && -n "$output_file" ) || -z "$INTERACTIVE" ]]; then
-          printf "\e[33m%s\e[4m%s\e[24m%s [Y/n] \e[0m" \
+          printf >&2 "\e[33m%s\e[4m%s\e[24m%s [Y/n] \e[0m" \
             "Docker image not found ${QUALIFIER}ly, do we run '" "docker pull $1" "'?" 
           read answer
-          echo
+          echo >&2
 
           case "$answer" in
           [Nn]*)
@@ -205,19 +190,19 @@ function docker2lxc() {
       set +x
       return 0
     else
-      # printf "DEBUG=%s\n" "$DEBUG"
+      # printf >&2 "DEBUG=%s\n" "$DEBUG"
       if [ "$DEBUG" = '1' ] || [ "${DEBUG@L}" = 'true' ] || [ "${DEBUG@L}" = 'dev' ]; then
         if [ "${DEBUG@L}" = 'dev' ]; then
-          printf "DEBUG: HOST=%s\n" "$(hostname) (as $(whoami))"
-          printf "DEBUG: SSH=%s\n" "$SSH"
-          printf "DEBUG: INVOKE=%s\n" "$INVOKE"
-          printf "DEBUG: EXPORT_INVOCATION=%s\n" "${EXPORT_INVOCATION:0:32}..."
-          printf "DEBUG: DOCKER_NOT_AVAILABLE=%s\n" "$DOCKER_NOT_AVAILABLE"
-          printf "DEBUG: IMAGE_FOUND=%s\n" "$IMAGE_FOUND"
-          printf "DEBUG: ARCHIVE_FILE=%s\n" "$output_file"
-          printf "DEBUG: INCOMPLETE_1=%s\n" "$INCOMPLETE_1"
-          printf "DEBUG: INCOMPLETE_2=%s\n" "$INCOMPLETE_2"
-          printf "DEBUG: INCOMPLETE_3=%s\n" "$INCOMPLETE_3"
+          printf >&2 "DEBUG: HOST=%s\n" "$(hostname) (as $(whoami))"
+          printf >&2 "DEBUG: SSH=%s\n" "$SSH"
+          printf >&2 "DEBUG: INVOKE=%s\n" "$INVOKE"
+          printf >&2 "DEBUG: EXPORT_INVOCATION=%s\n" "${EXPORT_INVOCATION:0:32}..."
+          printf >&2 "DEBUG: DOCKER_NOT_AVAILABLE=%s\n" "$DOCKER_NOT_AVAILABLE"
+          printf >&2 "DEBUG: IMAGE_FOUND=%s\n" "$IMAGE_FOUND"
+          printf >&2 "DEBUG: ARCHIVE_FILE=%s\n" "$output_file"
+          printf >&2 "DEBUG: INCOMPLETE_1=%s\n" "$INCOMPLETE_1"
+          printf >&2 "DEBUG: INCOMPLETE_2=%s\n" "$INCOMPLETE_2"
+          printf >&2 "DEBUG: INCOMPLETE_3=%s\n" "$INCOMPLETE_3"
         fi
 
         if   [[ -n "$INCOMPLETE_1" ]]; then
@@ -321,7 +306,7 @@ function docker2lxc() {
     printf >&2 "\e[33;4m%s \e[24;7m%s\e[27m? [y/N] \e[0m" \
             "Did you forward the output to a file using" " >template.tar.gz " 
     read answer
-    echo
+    echo >&2
 
     case "$answer" in
     [Yy]*)
