@@ -157,15 +157,6 @@ function docker2lxc() {
             fi
             ;;
           esac
-        elif [[ -z "$INTERACTIVE" ]]; then
-          # Prior to including this condition in the execution branch above, I was
-          # basing my logic on the assumption that invoking a command on a remote
-          # using SSH should not be interactive, which also informed my choice of
-          # words when naming the shell variable $INTERACTIVE. However, it turns out
-          # that I am just finding ways to check if the call is somehow indirected
-          # or piped, but it can still be interactive.
-          # This execution branch is not needed for now.
-          :
         fi
       fi
     else
@@ -297,6 +288,7 @@ function docker2lxc() {
   fi
 
   image_id=$(docker image ls --format="{{.ID}}" "$1" | head -n 1)
+  image_repo=$(docker image ls --format="{{.Repository}}" "$1" | head -n 1)
   image_id=$(echo "${image_id@L}" | grep --only-matching -E '^[0-9a-f]{10,}')
   if [[ $? -ne 0 || -z "$image_id" ]]; then 
     echo >&2 "\e[31m  Image's ID couldn't be determined, aborting\e[0m"
@@ -305,7 +297,7 @@ function docker2lxc() {
   fi
 
   # this is to implement a future clean protocol
-  docker tag $image_id $image_id:docker2lxc
+  docker tag $image_id "$image_repo:docker2lxc"
 
   # - create the container without running it (improved based on feedback from
   #   @AugustD on the Proxmox Forums in thread docker-to-pve-lxc-conversion-steps-tool

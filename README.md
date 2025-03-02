@@ -5,9 +5,9 @@
 > [!WARNING]
 > This cli tool is in an early alpha stage. It is provided "as is" without warranty, and as a personal project that is in development to explore its usefulness to its creators and others in the open-source community.
 
-## Screenshot
+## Demo
 
-![screenshot of the cli tool usage](./.github/assets/screenshot.png)
+![terminal recording showing cli usage](./.github/assets/recording.gif)
 
 ## Installation
 
@@ -45,6 +45,14 @@ docker2lxc timescale/timescaledb-ha pgvector-pgai-template
 
 This will result in saving the template as `pgvector-pgai-template` in the same directory. Note that ending the ending `.tar.gz` is optional, and will be added anyway if omitted.
 
+#### Optional cleanup
+
+To remove all the Docker images downloaded by `docker2lxc` locally as part of this usage scenario, use this command:
+
+```bash
+docker image rm --force $(docker image ls -q --filter 'reference=*:docker2lxc')
+```
+
 ### Docker is not available
 
 In this case, start by setting up an SSH access to another machine which has Docker and enough storage space available, then use:
@@ -58,6 +66,22 @@ ssh $hostwithdocker "$(docker2lxc $image:$tag)" > $tarball
 
 > [!TIP]
 > This usage scenario is also useful when the machine on which the LXC template needs to be stored does not have the resources (such as the storage space) for the download and the conversion of a large Docker image.
+
+#### Example
+
+```bash
+ssh hostwithdocker "$(docker2lxc timescale/timescaledb-ha)" > pgvector-pgai-template.tar.gz
+```
+
+This will result in saving the template as `pgvector-pgai-template.tar.gz` in the current directory. Note that in this case, you must add `.tar.gz` at the end of the template filename.
+
+#### Optional cleanup
+
+To remove all the Docker images downloaded by `docker2lxc` on the remote as part of this usage scenario, use the following command:
+
+```bash
+ssh hostwithdocker "$(docker image rm --force $(docker image ls -q --filter 'reference=*:docker2lxc')"
+```
 
 ## Questions?
 
